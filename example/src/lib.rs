@@ -1,4 +1,4 @@
-use aflpp_custom_mutator::{CustomMutator, FuzzResult, afl_state};
+use aflpp_custom_mutator::{CustomMutator, FuzzResult, afl_state, export_mutator};
 
 struct ExampleMutator;
 
@@ -14,3 +14,5 @@ impl CustomMutator for ExampleMutator {
         FuzzResult::InPlace
     }
 }
+
+export_mutator!(ExampleMutator);
