@@ -1,0 +1,1 @@
+This crate provides raw bindings to the types required for implementing [AFL++](https://github.com/AFLplusplus/AFLplusplus) [custom mutators](https://github.com/AFLplusplus/AFLplusplus/blob/stable/docs/custom_mutators.md) in Rust.

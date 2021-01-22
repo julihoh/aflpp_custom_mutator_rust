@@ -1,0 +1,3 @@
+[submodule "aflpp_custom_mutator-sys/AFLplusplus"]
+	path = aflpp_custom_mutator-sys/AFLplusplus
+	url = https://github.com/AFLplusplus/AFLplusplus.git

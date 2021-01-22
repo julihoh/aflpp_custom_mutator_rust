@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "aflpp_custom_mutator-sys",
+    "aflpp_custom_mutator",
+    "example",
+]
