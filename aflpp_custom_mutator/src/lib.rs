@@ -17,10 +17,17 @@
 //!
 //! # On `panic`s
 //! This binding is panic-safe in that it will prevent panics from unwinding into AFL++. Any panic will `abort` at the boundary between the custom mutator and AFL++.
+//! 
+//! # Access to AFL++ internals
+//! This crate has an optional feature "afl_internals", which gives access to AFL++'s internal state.
+//! The state is passed to [`CustomMutator::init`], when the feature is activated.
+//! 
+//! _This is completely unsafe and uses automatically generated types extracted from the AFL++ source._
 pub mod fallible;
 
 use std::{ffi::CStr, os::raw::c_uint};
 
+#[cfg(feature = "afl_internals")]
 #[doc(hidden)]
 pub use aflpp_custom_mutator_sys::afl_state;
 
@@ -39,7 +46,12 @@ pub enum FuzzResult<'l> {
 /// Implement this trait for the mutator and export it using [`export_mutator`] to generate a custom mutator.
 /// For documentation refer to the AFL++ sources.
 pub trait CustomMutator {
+    #[cfg(feature = "afl_internals")]
     fn init(afl: &'static afl_state, seed: c_uint) -> Self
+    where
+        Self: Sized;
+    #[cfg(not(feature = "afl_internals"))]
+    fn init(seed: c_uint) -> Self
     where
         Self: Sized;
 
@@ -75,7 +87,9 @@ pub trait CustomMutator {
 /// These wrappers are not intended to be used directly, rather export_mutator will use them to publish the custom mutator C API.
 #[doc(hidden)]
 pub mod wrappers {
+    #[cfg(feature = "afl_internals")]
     use aflpp_custom_mutator_sys::afl_state;
+
     use core::slice;
     use std::{
         any::Any,
@@ -106,9 +120,16 @@ pub mod wrappers {
             Box::into_raw(self) as *const c_void
         }
 
+        #[cfg(feature = "afl_internals")]
         fn new(afl: &'static afl_state, seed: c_uint) -> Box<Self> {
             Box::new(Self {
                 mutator: M::init(afl, seed),
+            })
+        }
+        #[cfg(not(feature = "afl_internals"))]
+        fn new(seed: c_uint) -> Box<Self> {
+            Box::new(Self {
+                mutator: M::init(seed),
             })
         }
     }
@@ -130,6 +151,16 @@ pub mod wrappers {
     }
 
     /// Internal function used in the macro
+    #[cfg(not(feature = "afl_internals"))]
+    pub fn afl_custom_init_<M: CustomMutator>(seed: c_uint) -> *const c_void {
+        match catch_unwind(|| FFIContext::<M>::new(seed).into_ptr()) {
+            Ok(ret) => ret,
+            Err(err) => panic_handler("afl_custom_init", err),
+        }
+    }
+
+    /// Internal function used in the macro
+    #[cfg(feature = "afl_internals")]
     pub fn afl_custom_init_<M: CustomMutator>(
         afl: Option<&'static afl_state>,
         seed: c_uint,
@@ -139,9 +170,7 @@ pub mod wrappers {
             FFIContext::<M>::new(afl, seed).into_ptr()
         }) {
             Ok(ret) => ret,
-            Err(err) => {
-                panic_handler("afl_custom_init", err)
-            }
+            Err(err) => panic_handler("afl_custom_init", err),
         }
     }
 
@@ -188,9 +217,7 @@ pub mod wrappers {
             }
         }) {
             Ok(ret) => ret,
-            Err(err) => {
-                panic_handler("afl_custom_fuzz", err)
-            }
+            Err(err) => panic_handler("afl_custom_fuzz", err),
         }
     }
 
@@ -212,9 +239,7 @@ pub mod wrappers {
             mutator.fuzz_count(buf_slice)
         }) {
             Ok(ret) => ret,
-            Err(err) => {
-                panic_handler("afl_custom_fuzz_count", err)
-            }
+            Err(err) => panic_handler("afl_custom_fuzz_count", err),
         }
     }
 
@@ -240,9 +265,7 @@ pub mod wrappers {
                 .queue_new_entry(filename_new_queue, filename_orig_queue);
         }) {
             Ok(ret) => ret,
-            Err(err) => {
-                panic_handler("afl_custom_queue_new_entry", err)
-            }
+            Err(err) => panic_handler("afl_custom_queue_new_entry", err),
         }
     }
 
@@ -253,9 +276,7 @@ pub mod wrappers {
             ManuallyDrop::into_inner(FFIContext::<M>::from(data));
         }) {
             Ok(ret) => ret,
-            Err(err) => {
-                panic_handler("afl_custom_deinit", err)
-            }
+            Err(err) => panic_handler("afl_custom_deinit", err),
         }
     }
 
@@ -270,9 +291,7 @@ pub mod wrappers {
             }
         }) {
             Ok(ret) => ret,
-            Err(err) => {
-                panic_handler("afl_custom_introspection", err)
-            }
+            Err(err) => panic_handler("afl_custom_introspection", err),
         }
     }
 
@@ -290,9 +309,7 @@ pub mod wrappers {
             }
         }) {
             Ok(ret) => ret,
-            Err(err) => {
-                panic_handler("afl_custom_describe", err)
-            }
+            Err(err) => panic_handler("afl_custom_describe", err),
         }
     }
 
@@ -310,9 +327,7 @@ pub mod wrappers {
                 .queue_get(unsafe { CStr::from_ptr(filename) }) as u8
         }) {
             Ok(ret) => ret,
-            Err(err) => {
-                panic_handler("afl_custom_queue_get", err)
-            }
+            Err(err) => panic_handler("afl_custom_queue_get", err),
         }
     }
 }
@@ -322,12 +337,17 @@ pub mod wrappers {
 /// # Example
 /// ```
 /// # #[macro_use] extern crate aflpp_custom_mutator;
-/// # use aflpp_custom_mutator::{CustomMutator, FuzzResult, afl_state};
+/// # #[cfg(feature = "afl_internals")]
+/// # use aflpp_custom_mutator::afl_state;
+/// # use aflpp_custom_mutator::{CustomMutator, FuzzResult};
 /// # use std::os::raw::c_uint;
 /// struct MyMutator;
 /// impl CustomMutator for MyMutator {
 ///     /// ...
-/// #  fn init(_afl: &afl_state, _seed: c_uint) -> Self {unimplemented!()}
+/// #  #[cfg(feature = "afl_internals")]
+/// #  fn init(_afl_state: &afl_state, _seed: c_uint) -> Self {unimplemented!()}
+/// #  #[cfg(not(feature = "afl_internals"))]
+/// #  fn init(_seed: c_uint) -> Self {unimplemented!()}
 /// #  fn fuzz(&mut self, _buffer: &mut [u8], _add_buff: Option<&[u8]>, _max_size: usize) -> FuzzResult {unimplemented!()}
 /// }
 /// export_mutator!(MyMutator);
@@ -335,12 +355,22 @@ pub mod wrappers {
 #[macro_export]
 macro_rules! export_mutator {
     ($mutator_type:ty) => {
+        #[cfg(feature = "afl_internals")]
         #[no_mangle]
         pub extern "C" fn afl_custom_init(
             afl: ::std::option::Option<&'static $crate::afl_state>,
             seed: ::std::os::raw::c_uint,
         ) -> *const ::std::os::raw::c_void {
             $crate::wrappers::afl_custom_init_::<$mutator_type>(afl, seed)
+        }
+
+        #[cfg(not(feature = "afl_internals"))]
+        #[no_mangle]
+        pub extern "C" fn afl_custom_init(
+            _afl: *const ::std::os::raw::c_void,
+            seed: ::std::os::raw::c_uint,
+        ) -> *const ::std::os::raw::c_void {
+            $crate::wrappers::afl_custom_init_::<$mutator_type>(seed)
         }
 
         #[no_mangle]
@@ -428,12 +458,21 @@ mod sanity_test {
 
     use crate::FuzzResult;
 
-    use super::{afl_state, export_mutator, CustomMutator};
+    #[cfg(feature = "afl_internals")]
+    use super::afl_state;
+
+    use super::{export_mutator, CustomMutator};
 
     struct ExampleMutator;
 
     impl CustomMutator for ExampleMutator {
+        #[cfg(feature = "afl_internals")]
         fn init(_afl: &afl_state, _seed: c_uint) -> Self {
+            unimplemented!()
+        }
+
+        #[cfg(not(feature = "afl_internals"))]
+        fn init(_seed: c_uint) -> Self {
             unimplemented!()
         }
 

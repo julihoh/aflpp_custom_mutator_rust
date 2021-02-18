@@ -1,6 +1,7 @@
 use core::panic;
 use std::{ffi::CStr, os::raw::c_uint};
 
+#[cfg(feature = "afl_internals")]
 use aflpp_custom_mutator_sys::afl_state;
 
 use crate::{CustomMutator, FuzzResult};
@@ -17,7 +18,13 @@ pub trait FallibleCustomMutator {
     /// This method can either panic to abort execution or not panic to keep executing on a best-effort basis.
     fn handle_err(err: Self::TErr);
 
+    #[cfg(feature = "afl_internals")]
     fn init(afl: &'static afl_state, seed: c_uint) -> Result<Self, Self::TErr>
+    where
+        Self: Sized;
+
+    #[cfg(not(feature = "afl_internals"))]
+    fn init(seed: c_uint) -> Result<Self, Self::TErr>
     where
         Self: Sized;
 
@@ -58,11 +65,26 @@ where
     M: FallibleCustomMutator,
     M::TErr: core::fmt::Debug,
 {
+    #[cfg(feature = "afl_internals")]
     fn init(afl: &'static afl_state, seed: c_uint) -> Self
     where
         Self: Sized,
     {
         match Self::init(afl, seed) {
+            Ok(r) => r,
+            Err(e) => {
+                Self::handle_err(e);
+                panic!("Error in afl_custom_init")
+            }
+        }
+    }
+
+    #[cfg(not(feature = "afl_internals"))]
+    fn init(seed: c_uint) -> Self
+    where
+        Self: Sized,
+    {
+        match Self::init(seed) {
             Ok(r) => r,
             Err(e) => {
                 Self::handle_err(e);
