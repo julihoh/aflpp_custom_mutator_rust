@@ -14,7 +14,7 @@ pub trait FallibleCustomMutator {
     type TErr;
 
     /// The method which handles errors. It is convenient to log the error here.
-    /// This method is *expected to [panic!]*.
+    /// This method can either panic to abort execution or not panic to keep executing on a best-effort basis.
     fn handle_err(err: Self::TErr);
 
     fn init(afl: &'static afl_state, seed: c_uint) -> Result<Self, Self::TErr>
@@ -66,7 +66,7 @@ where
             Ok(r) => r,
             Err(e) => {
                 Self::handle_err(e);
-                panic!("Error handler did not panic")
+                panic!("Error in afl_custom_init")
             }
         }
     }
@@ -76,7 +76,7 @@ where
             Ok(r) => r,
             Err(e) => {
                 Self::handle_err(e);
-                panic!("Error handler did not panic")
+                0
             }
         }
     }
@@ -91,7 +91,7 @@ where
             Ok(r) => r,
             Err(e) => {
                 Self::handle_err(e);
-                panic!("Error handler did not panic")
+                FuzzResult::InPlace
             }
         }
     }
@@ -101,7 +101,6 @@ where
             Ok(r) => r,
             Err(e) => {
                 Self::handle_err(e);
-                panic!("Error handler did not panic")
             }
         }
     }
@@ -111,7 +110,7 @@ where
             Ok(r) => r,
             Err(e) => {
                 Self::handle_err(e);
-                panic!("Error handler did not panic")
+                false
             }
         }
     }
@@ -121,7 +120,7 @@ where
             Ok(r) => r,
             Err(e) => {
                 Self::handle_err(e);
-                panic!("Error handler did not panic")
+                None
             }
         }
     }
@@ -131,7 +130,7 @@ where
             Ok(r) => r,
             Err(e) => {
                 Self::handle_err(e);
-                panic!("Error handler did not panic")
+                None
             }
         }
     }
